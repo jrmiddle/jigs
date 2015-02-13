@@ -1,0 +1,129 @@
+#!/usr/bin/env python
+# Expects ~/.jira.cfg to to contain:
+#
+# [whistle]
+# server: https://whistle.atlassian.net
+# username: snoopy
+# password: r3d8@r0n
+
+import argparse
+from collections import defaultdict
+try:
+    from jira.client import JIRA
+except ImportError as e:
+    print >> sys.stderr, "Jira not found; try `pip install jira`."
+
+import ConfigParser, os, sys
+
+class config(object):
+    
+    def __init__(self, config_path=None, scope=None):
+        
+        self._server = dict()
+        
+        if config_path is not None:
+            config = ConfigParser.SafeConfigParser()
+            files = config.read(os.path.expanduser(config_path))
+            if len(files) == 0:
+                raise Exception(sys.stderr, "{0} not found; exiting.".format(config_path))
+
+            if scope is None:
+                scope = config.get('defaults', 'scope')
+                
+            if scope is None:
+                raise Exception("No scope provided.")
+            
+            # print >> sys.stderr, "Using scope: {}".format(scope)
+            
+            try:
+                self._server['username'] = config.get("{}.server".format(scope), 'username')
+                self._server['password'] = config.get("{}.server".format(scope), 'password')
+                self._server['server'] = config.get("{}.server".format(scope), 'server')
+                self._filters = defaultdict(lambda: None, config.items("{}.filters".format(scope)))
+                
+            except ConfigParser.NoSectionError as e:
+                print >> sys.stderr, e
+                raise Exception("No {}.server section found; check your ~/.jira.cfg.".format(scope))
+                
+    @property
+    def server(self):
+        return self._server
+        
+    @property
+    def filters(self):
+        return self._filters
+    
+class client(object):
+    
+    def __init__(self, config):
+
+        self._jira = JIRA(
+            basic_auth=(config.server['username'], config.server['password']),
+            options={'server': config.server['server']}
+        )
+        
+    def filter(self, jql=None, filter_id=None, filter=None, fields=["summary", "issuetype"]):
+        
+        """
+        Filter issues.
+        :param: jql The JQL query to use. If provided, takes precedence.
+        :param: filter A filter object from which to extract jql
+        :param: filter_id the ID of a saved filter.
+        :param: An array of additional fields to grab.
+        
+        If multiple non-nil parameters are provided, they're considered in the order
+        listed above.
+        """
+        
+        ljql = jql
+        
+        if ljql is None:
+            if filter is not None:
+                ljql = filter.jql
+            
+        if ljql is None:
+            if filter_id is not None:
+                filter = self._jira.filter(filter_id)
+                if filter is not None:
+                    ljql = filter.jql
+                    
+        if ljql is None:
+            return None
+        
+        ret = self._jira.search_issues(ljql, fields=",".join(fields))
+        return ret
+        
+
+class markdown_formatter(object):
+    def __call__(self, issues=[]):
+        return ("\n".join(["* [{0}]({1}) ({2}): {3}".format(i.key, i.self, i.fields.issuetype.name, i.fields.summary) for i in issues]))
+        
+    @property
+    def fields(self):
+        return ["summary", "issuetype"]
+        
+        
+# f = jira.filter("12103")
+#
+# issues =  jira.search_issues(f.jql, fields="summary,issuetype")
+
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser()
+    # parser.add_argument("command", type=str, help="The command to execute")
+    parser.add_argument("-F", "--filterid", type=str, help="The filter ID to use")
+    parser.add_argument("-f", "--filtername", type=str, help="The filter preset (configured in .jira.cfg) to use")
+    # parser.add_argument("-s", "--scope", type=str, help="The scope to use, otherwise defaults to whatever is in [default]")
+    
+    args = parser.parse_args()
+    filter_id = args.filterid
+    
+    config = config(config_path="~/.jira.cfg")
+    formatter = markdown_formatter()
+    
+    if filter_id is None:
+        if args.filtername is not None:
+            filter_id = config.filters[args.filtername]
+        
+    if filter_id is not None:
+        print formatter(client(config).filter(filter_id=filter_id, fields=formatter.fields))

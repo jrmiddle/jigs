@@ -7,6 +7,8 @@
 # password: r3d8@r0n
 
 import argparse
+import logging
+
 from collections import defaultdict
 try:
     from jira.client import JIRA
@@ -15,7 +17,7 @@ except ImportError as e:
 
 import ConfigParser, os, sys
 
-class config(object):
+class Config(object):
     
     def __init__(self, config_path=None, scope=None):
         
@@ -53,7 +55,7 @@ class config(object):
     def filters(self):
         return self._filters
     
-class client(object):
+class Client(object):
     
     def __init__(self, config):
 
@@ -62,7 +64,7 @@ class client(object):
             options={'server': config.server['server']}
         )
         
-    def filter(self, jql=None, filter_id=None, filter=None, fields=["summary", "issuetype"]):
+    def query(self, jql=None, filter_id=None, filter=None, fields=["summary", "issuetype"]):
         
         """
         Filter issues.
@@ -75,6 +77,14 @@ class client(object):
         listed above.
         """
         
+        ljql = self.get_jql(jql=jql, filter_id=filter_id, filter=filter)
+        if ljql is None:
+            return None
+            
+        ret = self._jira.search_issues(ljql, fields=",".join(fields))
+        return ret
+        
+    def get_jql(self, jql=None, filter_id=None, filter=None):
         ljql = jql
         
         if ljql is None:
@@ -87,11 +97,10 @@ class client(object):
                 if filter is not None:
                     ljql = filter.jql
                     
-        if ljql is None:
-            return None
+        return ljql
         
-        ret = self._jira.search_issues(ljql, fields=",".join(fields))
-        return ret
+        print >> sys.stderr, ljql
+        
         
 
 class markdown_formatter(object):
@@ -101,29 +110,68 @@ class markdown_formatter(object):
     @property
     def fields(self):
         return ["summary", "issuetype"]
-        
-        
-# f = jira.filter("12103")
-#
-# issues =  jira.search_issues(f.jql, fields="summary,issuetype")
+  
+def config(args):
+    """
+    Run a filter (specified by name, filterid, or JQL).
+    """
+    
+    pass
 
+def list_issues(args):
+    """
+    List issues, according to filter criteria.
+    """
+    
+    print >> sys.stderr, repr(args)
+    
+    config = Config(args.config, scope=args.scope)
+    formatter = markdown_formatter()
+    client = Client(config)
+    
+    jql = args.jql
+    filter_id = args.filterid
+    if filter_id is None:
+        filter_id = config.filters[args.filtername]
+    
+    ljql = client.get_jql(jql=jql, filter_id=filter_id)
+
+    if ljql is None:
+        return
+
+    if args.dump:
+        print ljql
+        return
+
+    print formatter(Client(config).query(jql=ljql, fields=formatter.fields))
+        
 if __name__ == "__main__":
 
-    parser = argparse.ArgumentParser()
-    # parser.add_argument("command", type=str, help="The command to execute")
-    parser.add_argument("-F", "--filterid", type=str, help="The filter ID to use")
-    parser.add_argument("-f", "--filtername", type=str, help="The filter preset (configured in .jira.cfg) to use")
+    parser = argparse.ArgumentParser(prog = "jt")
+    parser.add_argument("-s", "--scope", help="The scope against which to execute commands. Defaults to value of 'scope' in config 'defaults' section.")
+    parser.add_argument("-c", "--config", default="~/.jira.cfg", help="Path to config file; defaults to ~/.jira.cfg.")
+    subparsers = parser.add_subparsers(help="Subcommands")
+    
+    # jt is -f FILTERNAME
+    # jt is -F FILTERID
+    # jt is -j JQL
+    # jt is -f FILTERNAME -d
+    
+    ls_parser = subparsers.add_parser("is", help="List issues")
+    ls_filter_group = ls_parser.add_mutually_exclusive_group()
+    ls_filter_group.add_argument("-F", "--filterid", type=str, help="The filter ID to use")
+    ls_filter_group.add_argument("-f", "--filtername", type=str, help="The filter preset (configured in .jira.cfg) to use")
+    ls_filter_group.add_argument("-j", "--jql", type=str, help="JQL to use. For example, 'jt is -j \'project = SW AND status = Started AND component = \"Tagg iOS\"\'")
+    ls_parser.add_argument("-d", "--dump", action="store_true", help="Dump JQL and exit.")
+    ls_parser.set_defaults(func=list_issues)
+    
+    # jt config 
+    
+
     # parser.add_argument("-s", "--scope", type=str, help="The scope to use, otherwise defaults to whatever is in [default]")
     
     args = parser.parse_args()
-    filter_id = args.filterid
     
-    config = config(config_path="~/.jira.cfg")
-    formatter = markdown_formatter()
+    # logging.basicConfig(level=logging.FATAL-(10*max(0, min(5, args.verbosity)))
     
-    if filter_id is None:
-        if args.filtername is not None:
-            filter_id = config.filters[args.filtername]
-        
-    if filter_id is not None:
-        print formatter(client(config).filter(filter_id=filter_id, fields=formatter.fields))
+    args.func(args)

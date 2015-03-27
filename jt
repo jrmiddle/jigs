@@ -157,15 +157,17 @@ if __name__ == "__main__":
     # jt is -j JQL
     # jt is -f FILTERNAME -d
     
-    ls_parser = subparsers.add_parser("is", help="List issues")
-    ls_filter_group = ls_parser.add_mutually_exclusive_group()
-    ls_filter_group.add_argument("-F", "--filterid", type=str, help="The filter ID to use")
-    ls_filter_group.add_argument("-f", "--filtername", type=str, help="The filter preset (configured in .jira.cfg) to use")
-    ls_filter_group.add_argument("-j", "--jql", type=str, help="JQL to use. For example, 'jt is -j \'project = SW AND status = Started AND component = \"Tagg iOS\"\'")
-    ls_parser.add_argument("-d", "--dump", action="store_true", help="Dump JQL and exit.")
-    ls_parser.set_defaults(func=list_issues)
+    is_parser = subparsers.add_parser("is", help="List issues")
+    is_filter_group = is_parser.add_mutually_exclusive_group()
+    is_filter_group.add_argument("-F", "--filterid", type=str, help="The filter ID to use")
+    is_filter_group.add_argument("-f", "--filtername", type=str, help="The filter preset (configured in .jira.cfg) to use")
+    is_filter_group.add_argument("-j", "--jql", type=str, help="JQL to use. For example, 'jt is -j \'project = SW AND status = Started AND component = \"Tagg iOS\"\'")
+    is_parser.add_argument("-d", "--dump", action="store_true", help="Dump JQL and exit.")
+    is_parser.set_defaults(func=list_issues)
     
     # jt config 
+    
+    cf_parser = subparsers.add_parser("cf", help="List config")
     
 
     # parser.add_argument("-s", "--scope", type=str, help="The scope to use, otherwise defaults to whatever is in [default]")

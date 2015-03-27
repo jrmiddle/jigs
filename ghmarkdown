@@ -1,0 +1,2 @@
+#!/bin/bash
+/usr/local/bin/pandoc -f markdown_github --email-obfuscation=references
